@@ -62,6 +62,50 @@ def atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     return true_range.rolling(window=period).mean()
 
 
+def adx(df: pd.DataFrame, period: int = 14):
+    """
+    Average Directional Index — measures trend STRENGTH, not direction.
+    Below ~20: weak/no trend, market is likely choppy/ranging.
+    Above ~25: a real trend is present, regardless of which way.
+
+    This is the standard fix for exactly the "mixed signals but small
+    score" situation: a symbol can look bullish-ish by moving averages
+    and bearish-ish by momentum simultaneously simply because it isn't
+    trending at all — ADX tells you that directly instead of guessing
+    from a wishy-washy combined score.
+    """
+    high = df["High"]
+    low = df["Low"]
+    close = df["Close"]
+    prev_close = close.shift(1)
+    prev_high = high.shift(1)
+    prev_low = low.shift(1)
+
+    up_move = high - prev_high
+    down_move = prev_low - low
+
+    plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
+    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    tr_smooth = tr.ewm(alpha=1 / period, adjust=False).mean()
+    plus_dm_smooth = pd.Series(plus_dm, index=df.index).ewm(alpha=1 / period, adjust=False).mean()
+    minus_dm_smooth = pd.Series(minus_dm, index=df.index).ewm(alpha=1 / period, adjust=False).mean()
+
+    plus_di = 100 * (plus_dm_smooth / tr_smooth.replace(0, np.nan))
+    minus_di = 100 * (minus_dm_smooth / tr_smooth.replace(0, np.nan))
+
+    di_sum = (plus_di + minus_di).replace(0, np.nan)
+    dx = 100 * (plus_di - minus_di).abs() / di_sum
+    adx_val = dx.ewm(alpha=1 / period, adjust=False).mean()
+
+    return adx_val.fillna(0), plus_di.fillna(0), minus_di.fillna(0)
+
+
 def generate_bias(df: pd.DataFrame) -> dict:
     """
     Combine indicators into a simple, transparent bias label.
@@ -105,6 +149,20 @@ def generate_bias(df: pd.DataFrame) -> dict:
         score -= 0.5
         reasons.append("MACD histogram is negative (downward momentum).")
 
+    adx_val, plus_di, minus_di = adx(df)
+    adx_last = adx_val.iloc[-1]
+
+    if adx_last < 20:
+        reasons.append(
+            f"ADX is {adx_last:.1f} — weak/no trend strength (market likely choppy/ranging). "
+            f"Dampening confidence in this signal."
+        )
+        score *= 0.4
+    elif adx_last < 25:
+        reasons.append(f"ADX is {adx_last:.1f} — a trend may be emerging, but isn't confirmed yet.")
+    else:
+        reasons.append(f"ADX is {adx_last:.1f} — a real trend is confirmed (regardless of direction).")
+
     if score >= 1:
         bias = "BULLISH bias"
     elif score <= -1:
@@ -120,4 +178,5 @@ def generate_bias(df: pd.DataFrame) -> dict:
         "rsi": rsi14,
         "sma20": sma20,
         "sma50": sma50,
+        "adx": adx_last,
     }

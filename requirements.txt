@@ -1,3 +1,8 @@
 yfinance>=1.5.0
 pandas>=2.0.0
 numpy>=1.24.0
+streamlit>=1.60.0
+
+# Optional — only needed for the live 'watch' command (MT5 integration).
+# Windows only; requires the MT5 desktop terminal to be installed and running.
+MetaTrader5>=5.0.45

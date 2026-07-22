@@ -20,6 +20,41 @@ FIELDNAMES = [
 ]
 
 
+EXECUTION_LOG_FILE = "execution_log.csv"
+EXECUTION_FIELDNAMES = [
+    "timestamp", "symbol", "direction", "volume", "fill_price",
+    "stop_loss", "take_profit", "ticket", "account_mode", "trigger"
+]
+
+
+def log_execution(symbol: str, direction: str, volume: float, fill_price: float,
+                   stop_loss: float, take_profit: float, ticket, account_mode: str,
+                   trigger: str = "manual", path: str = EXECUTION_LOG_FILE):
+    """
+    Records every REAL order this dashboard ever sends to MT5 — a separate,
+    permanent audit trail distinct from the manual trade journal above.
+    `trigger` is either "manual" (a human clicked Execute) or "auto"
+    (the auto-trading loop fired it, only ever possible on a demo account).
+    """
+    file_exists = os.path.exists(path)
+    with open(path, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=EXECUTION_FIELDNAMES)
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow({
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "symbol": symbol,
+            "direction": direction,
+            "volume": volume,
+            "fill_price": fill_price,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "ticket": ticket,
+            "account_mode": account_mode,
+            "trigger": trigger,
+        })
+
+
 def ensure_journal_exists(path: str = JOURNAL_FILE):
     if not os.path.exists(path):
         with open(path, "w", newline="") as f:
